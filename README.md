@@ -1,50 +1,102 @@
 # IGI2 RCON
 
-This is a rewrite/reimplementation of the official IGI2MP RCON application (console.exe) using Golang.
+A cross-platform rewrite and modern replacement of the official IGI2 multiplayer RCON console (`console.exe`) written in Go.
 
 ---
 
-## Features
+## Features & QoL Improvements
 
-Nothing too fancy, operates exactly like the original console.exe application. Only new features include the inclusion of a help (`help`) command that shows all valid commands you can pass to the server.
+* **Interactive Readline Experience:**
+  * **Command History:** Use Up/Down arrows to cycle through previous commands, persisted across sessions in `~/.igi2_rcon_history`.
+  * **Tab Auto-Completion:** Auto-completes `sv`, `lo`, server subcommands, and client shortcuts.
+  * **Safe Asynchronous Rendering:** Background server packets are cleanly printed above the prompt without tearing or erasing half-typed commands.
+  * **Instant Screen Clearing:** Fast ANSI screen clearing (`clear` or `cls`) without spawning external shell processes.
+* **Smart Client Shortcuts:**
+  * Aliases for cumbersome game commands (e.g., `login <pass>`, `say <msg>`, `players`, `maps`, `map <id>`, `kick <id>`, `ban <id>`, `restart`, `next`). Raw commands (`sv ...`, `lo ...`) remain fully supported.
+* **Auto-Login:** Pass `-password <pass>` on startup or enter `login <pass>` in console.
+* **Single-Shot CLI Mode (`-c`):** Execute a command non-interactively and exit (ideal for cron jobs, Discord bots, and automated scripts).
+* **Verbose Packet Debugging:** Toggle raw hex dumps and TX/RX logging with `-debug` or the `debug` command.
+* **100% Cross-Platform:** Pure Go with zero Cgo dependencies. Compiles and runs identically on Windows, Linux, and macOS.
 
 ---
 
-## Installation
+## Installation & Building
 
-This tool requires the Go programming language.
-1.  Clone the repo.
-2.  Open a terminal in the cloned repo directory.
-3.  Compile the application:
-    ```bash
-    go build igi2_rcon.go
-    ```
+Requires Go 1.22+.
+
+```bash
+# Clone the repository
+git clone https://github.com/remivoire/igi2rcon-go.git
+cd igi2rcon-go
+
+# Download dependencies
+go mod tidy
+
+# Build native binary
+go build -o igi2_rcon igi2_rcon.go
+```
+
+### Cross-Compilation
+
+```bash
+# Build for Windows (.exe)
+GOOS=windows GOARCH=amd64 go build -o igi2_rcon.exe igi2_rcon.go
+
+# Build for macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o igi2_rcon_mac igi2_rcon.go
+```
 
 ---
 
 ## Usage
 
-Start the console by providing the server IP address and the port number.
+### 1. Interactive Console
+
+Connect directly with positional arguments or flags:
 
 ```bash
-./igi2-rcon <ip_address> <port>
+# Standard interactive launch
+./igi2_rcon 127.0.0.1 26001
+
+# With auto-login password
+./igi2_rcon -host 127.0.0.1 -port 26001 -password secret
+
+# With packet debugging enabled
+./igi2_rcon -host 127.0.0.1 -debug
 ```
-Example:
+
+### 2. Single-Shot Command (Scripting / Bots)
+
+Send a command, print the server response, and exit immediately:
+
 ```bash
-./igi2-rcon 127.0.0.1 26001
+./igi2_rcon -host 127.0.0.1 -port 26001 -pass secret -c "maps"
+./igi2_rcon -host 127.0.0.1 -port 26001 -pass secret -c "say Server restarting in 5 minutes"
 ```
+
+---
+
+## Client Shortcuts Reference
+
+| Command / Shortcut | Expands to | Description |
+| :--- | :--- | :--- |
+| `login <passwd>` | `<passwd>` | Authenticate with RCON password |
+| `say <message>` | `lo announce("<msg>")` | Broadcast message to all players |
+| `players` | `sv finger` | Display connected players and statuses |
+| `maps` | `sv listmaps` | List available map IDs |
+| `map <mapID>` | `sv gotomap <mapID>` | Change to specific map ID |
+| `kick <playerID>` | `sv kick <playerID>` | Kick player by ID |
+| `ban <playerID>` | `sv ban <playerID>` | Ban player by ID |
+| `unban <num>` | `sv unban <num>` | Remove ban from list |
+| `next` | `sv gotonext` | Switch to next map in rotation |
+| `restart` | `sv restartmap` | Restart current map |
+| `debug` | *(client)* | Toggle raw packet debug logging |
+| `clear` / `cls` | *(client)* | Clear the terminal screen |
+| `help` | *(client)* | Show all available server commands & shortcuts |
+| `exit` / `quit` | *(client)* | Exit the application |
 
 ---
 
 ## Technical Details
 
-The application utilizes the `net` package for UDP communication. It prepends a forward slash `/` to all outgoing strings to match what's required by the IGI2 server. Server responses are processed by skipping the 24-byte header and trimming null characters for clean text output.
-
-## Tidbit
-
-This is arguably the worst implementation of RCON I've ever seen in a game. This leads to - 
-1. Dropped Packets: You ever noticed how some commands, despite being passed to the server, don't return a response? That is thanks to the very nature of UDP. The game server expects UDP over the same server port (e.g., 26001) for RCON. UDP lacks ACK (Acknowledgement) mechanisms, meaning if a packet gets lost in transit due to something minor, it's gone forever. Neither the client nor the server will ever know it was dropped.
-2. Fighting for Bandwidth: Because RCON shares the exact same UDP port as gameplay, your admin commands are literally competing for network priority with serverside game logic. If there's anything heavy going on in the server the network buffer can fill up and silently trash your incoming RCON responses. 
-3. No State / Sequencing: There are no packet IDs. If you spam three commands quickly the server might process them out of order or you might receive the response for command #3 before command #1. If a response gets dropped you have no way to know which command it was attached to.
-
-I guess if it works, it works. I can't change much of that right now but I figured this'd be a bit faster and more multiplatform this way.
+The application utilizes UDP via Go's standard `net` package. Outgoing commands are prefixed with `/` as required by the IGI2 engine. Server responses are parsed by stripping the 24-byte engine header and null terminator.

@@ -1,0 +1,13 @@
+# Binaries
+igi2_rcon
+igi2_rcon.exe
+igi2rcon
+igi2rcon.exe
+*.exe
+
+# Output directories
+dist/
+build-*/
+
+# History file
+.igi2_rcon_history
